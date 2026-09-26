@@ -1,7 +1,10 @@
 import static java.lang.IO.println;
+import java.nio.file.Files;
+import java.nio.file.Paths;
+import java.io.IOException;
 
 void main(){
-ex2();
+ex3();
 }
 void ex1(){
     println("Lettura 1:");
@@ -38,6 +41,11 @@ void ex1(){
     Integer valore1 = 62;
     Integer  valore2 = 68;
     ConfrontaBatteria(valore1,valore2);
+}
+void ConfrontaBatteria(Integer valore1, Integer valore2){
+    println("Confronto valori:"+valore1+" - "+valore2);
+    println(valore1.equals(valore2));
+    return;
 }
 void ex2(){
     int[] codes = {200,404,500,100,700};
@@ -110,8 +118,148 @@ ArrayList<RichiestaHttp> LastN500(ArrayList<RichiestaHttp> array,int n){
     }
     return last_500;
 }
-void ConfrontaBatteria(Integer valore1, Integer valore2){
-    println("Confronto valori:"+valore1+" - "+valore2);
-    println(valore1.equals(valore2));
-    return;
+
+void ex3(){
+    try{
+        Path path = Paths.get("ticket.csv");
+        PriorityQueue<Ticket> coda = new PriorityQueue<>();
+        if(!Files.exists(path)){
+            throw new FileNotFoundException();
+        }
+        try {
+            List<String> righe = Files.readAllLines(path);  //leggo le righe di tutto il file
+            String[] campi;
+            String id = null;
+            String descrizione = null;
+            String livello = null;
+            Long timestampArrivo = null;
+            Ticket ticket;
+            boolean riga_valida;  //serve per determinare le righe valide(quelle vuote le salto)
+            for (String riga : righe) {
+               if (riga.trim().isEmpty()) {
+                    continue; //ignora righe vuote
+                }
+
+                println(riga);
+                campi = riga.split(",");
+
+                if (campi.length < 4) {
+                    println("Errore:riga nonm valida!");
+                    continue;
+                }
+                riga_valida = true;
+
+                try {
+                    id = campi[0].trim();
+                    if (!id.matches("T\\d{3}")) {
+                        throw new IOException("Campo id non valido: " + id);
+                    }
+                } catch (IOException e) {
+                    println("LOG ERRORE: " + e.getMessage());
+                    riga_valida = false;
+                }
+
+                descrizione = campi[1].trim();
+
+                try {
+                    livello = campi[2].trim();
+                    if (!livello.equals("CRITICO") && !livello.equals("ALTO") &&
+                            !livello.equals("BASSO") && !livello.equals("MEDIO")) {
+                        throw new IOException("Campo livello invalido: ");
+                    }
+                } catch (IOException ex) {
+                    println("errore: " + ex.getMessage());
+                    riga_valida = false;
+                }
+
+                try {
+                    timestampArrivo = Long.parseLong(campi[3].trim());
+                    if (timestampArrivo < 0) {
+                        throw new IOException("Campo timestamp invalido!");
+                    }
+                } catch (IOException ex) {
+                    println("Timestamp non valido!");
+                    riga_valida = false;
+                }
+
+                if (riga_valida) {
+                    ticket = new Ticket(id, descrizione, livello, timestampArrivo);
+                    coda.add(ticket);
+                }
+            }
+        } catch (IOException ex) {
+            println(ex.getMessage());
+        }
+
+        int tempo = 0;
+        int critici_consecutivi = 0;  //contatori per le stats finali
+
+        int totale_ticket = 0;
+        int critici = 0;
+        int alti = 0;
+        int medi = 0;
+        int bassi = 0;
+
+        try (PrintWriter writer = new PrintWriter(new FileWriter("report_lavorazione.txt"))) {
+
+            writer.println("- Report lavorazione tickets -\n");
+            writer.println();
+
+            while (!coda.isEmpty()) {
+                Ticket ticket = coda.poll(); //estrae ticket
+
+                switch (ticket.getLivello()) {
+                    case "CRITICO":
+                        critici++;
+                        break;
+                    case "ALTO":
+                        alti++;
+                        break;
+                    case "MEDIO":
+                        medi++;
+                        break;
+                    case "BASSO":
+                        bassi++;
+                        break;
+                }
+
+                if (ticket.getLivello().equals("CRITICO") || ticket.getLivello().equals("ALTO")) {
+                    critici_consecutivi++;  //verifico critici/alti consecutivi
+                    if (critici_consecutivi > 5) {
+                        tempo += 10;
+                        System.out.println("pausa di 10 min per il tecnico");
+                        critici_consecutivi = 1;
+                    }
+                } else {
+                    critici_consecutivi = 0;
+                }
+
+                int durata = ticket.PriorityToTime();
+                tempo += durata;
+                totale_ticket++;
+
+                String riga = "Ticket " + ticket.getId() + " - Livello:" + ticket.getLivello() +
+                        "- Durata:" + durata + " min";
+
+                writer.println(riga);  //scrive la riga nel file di testo
+                println("Ticket " + ticket.getId() + " - Livello:" + ticket.getLivello() +
+                        "- Durata:" + durata + " min");
+            }
+
+            writer.println("   RIEPILOGO FINALE   ");
+            writer.println("Totale ticket elaborati: " + totale_ticket);
+            writer.println("Ticket CRITICO: " + critici);
+            writer.println("Ticket ALTO: " + alti);
+            writer.println("Ticket MEDIO: " + medi);
+            writer.println("Ticket BASSO: " + bassi);
+            writer.println("Tempo totale stimato di completamento: " + tempo + " minuti");
+
+
+        } catch (IOException e) {
+            println("Errore durante la scrittura del report: " + e.getMessage());
+        }
+    }
+    catch(FileNotFoundException ex){
+        println("Error: file not found");
+    }
 }
